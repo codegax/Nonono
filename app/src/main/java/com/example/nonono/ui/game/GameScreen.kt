@@ -111,12 +111,13 @@ private fun TapModeToggle(
     Row(verticalAlignment = Alignment.CenterVertically) {
         // Fill side: a filled square glyph
         Box(
-            modifier = Modifier
-                .size(20.dp)
-                .background(
-                    color = if (current == TapMode.Fill) active else inactive,
-                    shape = RoundedCornerShape(3.dp),
-                ),
+            modifier =
+                Modifier
+                    .size(20.dp)
+                    .background(
+                        color = if (current == TapMode.Fill) active else inactive,
+                        shape = RoundedCornerShape(3.dp),
+                    ),
         )
 
         Spacer(Modifier.width(12.dp))
