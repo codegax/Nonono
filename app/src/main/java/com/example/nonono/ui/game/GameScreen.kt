@@ -85,7 +85,12 @@ fun GameScreen(
                     else -> "Tap cells to fill the puzzle"
                 },
             style = MaterialTheme.typography.bodyLarge,
-            color = if (gameStatus == GameStatus.Won) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            color =
+                if (gameStatus == GameStatus.Won) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
         )
 
         Spacer(Modifier.height(16.dp))
