@@ -1,7 +1,7 @@
 package com.example.nonono.ui.game
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -24,17 +27,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.Icon
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nonono.domain.CellState
+import com.example.nonono.domain.GameStatus
 import com.example.nonono.domain.Puzzle
 import com.example.nonono.domain.TapMode
-import com.example.nonono.domain.GameStatus
+import kotlin.math.abs
 
 private val CELL = 48.dp
 private val GUTTER = 56.dp
@@ -50,6 +55,7 @@ fun GameScreen(
     val gameStatus by viewModel.gameStatus.collectAsStateWithLifecycle()
     val lives by viewModel.lives.collectAsStateWithLifecycle()
     val tapMode by viewModel.tapMode.collectAsStateWithLifecycle()
+    val density = LocalDensity.current
 
     Column(
         modifier = modifier.fillMaxSize().padding(16.dp),
@@ -85,18 +91,77 @@ fun GameScreen(
 
         ColumnClues(puzzle)
 
-        for (y in 0 until board.height) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RowClue(puzzle.rows[y])
-                for (x in 0 until board.width) {
-                    Cell(
-                        state = board.get(x, y),
-                        size = CELL,
-                        onTap = { viewModel.onCellTap(x, y) },
-                    )
+        Row(verticalAlignment = Alignment.Top) {
+            Column {
+                for (y in 0 until board.height) {
+                    RowClue(puzzle.rows[y])
                 }
-                Spacer(Modifier.width(GUTTER))
             }
+
+            Box(
+                modifier = Modifier.pointerInput(board.width, board.height) {
+                    val cellPx = with(density) { CELL.toPx() }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+
+                        fun cellAt(offset: Offset): Pair<Int, Int>? {
+                            val cx = (offset.x / cellPx).toInt()
+                            val cy = (offset.y / cellPx).toInt()
+                            return if (cx in 0 until board.width && cy in 0 until board.height) {
+                                cx to cy
+                            } else {
+                                null
+                            }
+                        }
+
+                        val downCell = cellAt(down.position)
+                        if (downCell != null) {
+                            viewModel.onCellTap(downCell.first, downCell.second)
+                        }
+
+                        var lastCell = downCell
+                        var lockedAxis: Char? = null
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+
+                            val cell = cellAt(change.position) ?: continue
+                            val (cx, cy) = cell
+
+                            if (lockedAxis == null && downCell != null) {
+                                val dx = abs(cx - downCell.first)
+                                val dy = abs(cy - downCell.second)
+                                if (dx + dy > 0) {
+                                    lockedAxis = if (dx >= dy) 'h' else 'v'
+                                }
+                            }
+
+                            val targetX = if (lockedAxis == 'h') cx else (downCell?.first ?: cx)
+                            val targetY = if (lockedAxis == 'v') cy else (downCell?.second ?: cy)
+                            val target = targetX to targetY
+
+                            if (target != lastCell) {
+                                viewModel.onCellTap(targetX, targetY)
+                                lastCell = target
+                            }
+                        }
+                    }
+                },
+            ) {
+                Column {
+                    for (y in 0 until board.height) {
+                        Row {
+                            for (x in 0 until board.width) {
+                                Cell(state = board.get(x, y), size = CELL)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.width(GUTTER))
         }
 
         Spacer(Modifier.height(16.dp))
@@ -204,7 +269,6 @@ private fun RowClue(clue: List<Int>) {
 private fun Cell(
     state: CellState,
     size: Dp,
-    onTap: () -> Unit,
 ) {
     val color =
         if (state == CellState.Filled) {
@@ -218,8 +282,7 @@ private fun Cell(
             Modifier
                 .size(size)
                 .padding(2.dp)
-                .background(color = color, shape = RoundedCornerShape(4.dp))
-                .clickable { onTap() },
+                .background(color = color, shape = RoundedCornerShape(4.dp)),
         contentAlignment = Alignment.Center,
     ) {
         if (state == CellState.Marked) {
