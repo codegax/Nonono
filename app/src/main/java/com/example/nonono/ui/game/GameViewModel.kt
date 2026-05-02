@@ -4,19 +4,20 @@ import androidx.lifecycle.ViewModel
 import com.example.nonono.domain.Board
 import com.example.nonono.domain.CellState
 import com.example.nonono.domain.GameStatus
+import com.example.nonono.domain.Level
 import com.example.nonono.domain.Puzzle
 import com.example.nonono.domain.TapMode
-import com.example.nonono.domain.samplePuzzle
-import com.example.nonono.domain.samplePuzzleSolution
+import com.example.nonono.domain.samplePuzzles
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class GameViewModel : ViewModel() {
-    val puzzle: Puzzle = samplePuzzle()
-    val solution: Board = samplePuzzleSolution()
 
-    private val _board = MutableStateFlow(emptyBoardFor(puzzle))
+    private val _level = MutableStateFlow(samplePuzzles.random())
+    val level: StateFlow<Level> = _level.asStateFlow()
+
+    private val _board = MutableStateFlow(emptyBoardFor(_level.value.puzzle))
     val board: StateFlow<Board> = _board.asStateFlow()
 
     private val _gameStatus = MutableStateFlow(GameStatus.Playing)
@@ -32,6 +33,7 @@ class GameViewModel : ViewModel() {
         x: Int,
         y: Int,
     ) {
+        val solution = _level.value.solution
         val current = _board.value
         if (_gameStatus.value == GameStatus.Playing && current.get(x, y) == CellState.Empty) {
             val solutionState = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
@@ -41,31 +43,33 @@ class GameViewModel : ViewModel() {
                     TapMode.Mark -> CellState.Marked
                 }
 
-            val updated = current.set(x, y, solutionState)
-            _board.value = updated
+            var updated = current.set(x, y, solutionState)
+
             if (solutionState == stateSelected) {
                 if (updated.matchesFills(solution)) _gameStatus.value = GameStatus.Won
-
-                val solutionRow = solution.row(y)
-                val solutionColumn = solution.column(x)
-                val updatedRow = updated.row(y)
-                val updatedColumn = updated.column(x)
-
-                if (solutionRow.count { it == CellState.Filled } == updatedRow.count { it == CellState.Filled }) {
-                    _board.value = fillRow(y, updated, solution)
-                }
-                if (solutionColumn.count { it == CellState.Filled } == updatedColumn.count { it == CellState.Filled }) {
-                    _board.value = fillColumn(x, updated, solution)
-                }
             } else {
                 val newLives = _lives.value - 1
                 _lives.value = newLives
                 if (newLives < 1) _gameStatus.value = GameStatus.Lost
             }
+
+            val solutionRow = solution.row(y)
+            val updatedRow = updated.row(y)
+            if (solutionRow.count { it == CellState.Filled } == updatedRow.count { it == CellState.Filled }) {
+                updated = fillRow(y, updated, solution)
+            }
+
+            val solutionColumn = solution.column(x)
+            val updatedColumn = updated.column(x)
+            if (solutionColumn.count { it == CellState.Filled } == updatedColumn.count { it == CellState.Filled }) {
+                updated = fillColumn(x, updated, solution)
+            }
+
+            _board.value = updated
         }
     }
 
-    fun fillRow(
+    private fun fillRow(
         y: Int,
         current: Board,
         solution: Board,
@@ -78,7 +82,7 @@ class GameViewModel : ViewModel() {
         return current.copy(cells = newCells)
     }
 
-    fun fillColumn(
+    private fun fillColumn(
         x: Int,
         current: Board,
         solution: Board,
@@ -96,7 +100,9 @@ class GameViewModel : ViewModel() {
     }
 
     fun reset() {
-        _board.value = emptyBoardFor(puzzle)
+        val next = samplePuzzles.random()
+        _level.value = next
+        _board.value = emptyBoardFor(next.puzzle)
         _gameStatus.value = GameStatus.Playing
         _lives.value = 3
         _tapMode.value = TapMode.Fill

@@ -44,7 +44,8 @@ fun GameScreen(
     modifier: Modifier = Modifier,
     viewModel: GameViewModel = viewModel(),
 ) {
-    val puzzle = viewModel.puzzle
+    val level by viewModel.level.collectAsStateWithLifecycle()
+    val puzzle = level.puzzle
     val board by viewModel.board.collectAsStateWithLifecycle()
     val gameStatus by viewModel.gameStatus.collectAsStateWithLifecycle()
     val lives by viewModel.lives.collectAsStateWithLifecycle()
