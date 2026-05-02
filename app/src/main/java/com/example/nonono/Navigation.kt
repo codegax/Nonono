@@ -8,22 +8,28 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import com.example.nonono.ui.home.HomeScreen
 import com.example.nonono.ui.game.GameScreen
 
 @Composable
 fun MainNavigation() {
-    val backStack = rememberNavBackStack(Main)
+    val backStack = rememberNavBackStack(Home)
 
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
         entryProvider =
             entryProvider {
-                entry<Main> {
+                entry<Home> {
+                    HomeScreen(
+                        onPlay = { backStack.add(Game) },
+                        modifier = Modifier.safeDrawingPadding().padding(16.dp),
+                    )
+                }
+                entry<Game> {
                     GameScreen(
-                        modifier = Modifier
-                            .safeDrawingPadding()
-                            .padding(16.dp),
+                        onBack = { backStack.removeLastOrNull() },
+                        modifier = Modifier.safeDrawingPadding().padding(16.dp),
                     )
                 }
             },

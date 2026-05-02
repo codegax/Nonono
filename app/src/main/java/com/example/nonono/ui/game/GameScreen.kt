@@ -2,6 +2,7 @@ package com.example.nonono.ui.game
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -46,6 +46,7 @@ private val GUTTER = 56.dp
 
 @Composable
 fun GameScreen(
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: GameViewModel = viewModel(),
 ) {
@@ -62,7 +63,7 @@ fun GameScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Nonono",
+            text = level.name,
             style = MaterialTheme.typography.headlineMedium,
         )
 
@@ -168,6 +169,7 @@ fun GameScreen(
 
         TapModeToggle(
             current = tapMode,
+            gameStatus = gameStatus,
             onToggle = viewModel::toggleTapMode,
         )
 
@@ -176,12 +178,17 @@ fun GameScreen(
         OutlinedButton(onClick = viewModel::reset) {
             Text("New game")
         }
+
+        OutlinedButton(onClick = onBack) {
+            Text("Menu")
+        }
     }
 }
 
 @Composable
 private fun TapModeToggle(
     current: TapMode,
+    gameStatus: GameStatus,
     onToggle: () -> Unit,
 ) {
     val modes = listOf(TapMode.Fill, TapMode.Mark)
@@ -189,25 +196,30 @@ private fun TapModeToggle(
         modes.forEachIndexed { index, mode ->
             SegmentedButton(
                 selected = current == mode,
+                enabled = gameStatus == GameStatus.Playing,
                 onClick = { if (current != mode) onToggle() },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
                 icon = {
                     when (mode) {
-                        TapMode.Fill ->
+                        TapMode.Fill -> {
                             Box(
-                                modifier = Modifier
-                                    .size(SegmentedButtonDefaults.IconSize)
-                                    .background(
-                                        color = LocalContentColor.current,
-                                        shape = RoundedCornerShape(2.dp),
-                                    ),
+                                modifier =
+                                    Modifier
+                                        .size(SegmentedButtonDefaults.IconSize)
+                                        .background(
+                                            color = LocalContentColor.current,
+                                            shape = RoundedCornerShape(2.dp),
+                                        ),
                             )
-                        TapMode.Mark ->
+                        }
+
+                        TapMode.Mark -> {
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = null,
                                 modifier = Modifier.size(SegmentedButtonDefaults.IconSize),
                             )
+                        }
                     }
                 },
                 label = {
