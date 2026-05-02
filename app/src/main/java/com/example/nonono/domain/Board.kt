@@ -21,4 +21,8 @@ data class Board(
                     it[y * width + x] = state
                 },
         )
+
+    fun row(y: Int): List<CellState> = cells.subList(y * width, (y + 1) * width)
+
+    fun column(x: Int): List<CellState> = (0 until height).map { i -> cells[i * width + x] }
 }

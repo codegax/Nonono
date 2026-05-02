@@ -45,12 +45,50 @@ class GameViewModel : ViewModel() {
             _board.value = updated
             if (solutionState == stateSelected) {
                 if (updated.matchesFills(solution)) _gameStatus.value = GameStatus.Won
+
+                val solutionRow = solution.row(y)
+                val solutionColumn = solution.column(x)
+                val updatedRow = updated.row(y)
+                val updatedColumn = updated.column(x)
+
+                if (solutionRow.count { it == CellState.Filled } == updatedRow.count { it == CellState.Filled }) {
+                    _board.value = fillRow(y, updated, solution)
+                }
+                if (solutionColumn.count { it == CellState.Filled } == updatedColumn.count { it == CellState.Filled }) {
+                    _board.value = fillColumn(x, updated, solution)
+                }
             } else {
                 val newLives = _lives.value - 1
                 _lives.value = newLives
                 if (newLives < 1) _gameStatus.value = GameStatus.Lost
             }
         }
+    }
+
+    fun fillRow(
+        y: Int,
+        current: Board,
+        solution: Board,
+    ): Board {
+        val newCells = current.cells.toMutableList()
+        for (x in 0 until current.width) {
+            val target = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
+            newCells[y * current.width + x] = target
+        }
+        return current.copy(cells = newCells)
+    }
+
+    fun fillColumn(
+        x: Int,
+        current: Board,
+        solution: Board,
+    ): Board {
+        val newCells = current.cells.toMutableList()
+        for (y in 0 until current.height) {
+            val target = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
+            newCells[y * current.width + x] = target
+        }
+        return current.copy(cells = newCells)
     }
 
     fun toggleTapMode() {
