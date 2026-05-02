@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +26,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nonono.domain.CellState
@@ -63,7 +70,6 @@ fun GameScreen(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            // text = if (isWon) "You win!" else if(isLost) "You Lost!" else "Tap cells to fill the puzzle",
             text =
                 when (gameStatus) {
                     GameStatus.Won -> "You WON!"
@@ -88,6 +94,7 @@ fun GameScreen(
                         onTap = { viewModel.onCellTap(x, y) },
                     )
                 }
+                Spacer(Modifier.width(GUTTER))
             }
         }
 
@@ -97,6 +104,12 @@ fun GameScreen(
             current = tapMode,
             onToggle = viewModel::toggleTapMode,
         )
+
+        Spacer(Modifier.height(16.dp))
+
+        OutlinedButton(onClick = viewModel::reset) {
+            Text("New game")
+        }
     }
 }
 
@@ -105,36 +118,44 @@ private fun TapModeToggle(
     current: TapMode,
     onToggle: () -> Unit,
 ) {
-    val active = MaterialTheme.colorScheme.primary
-    val inactive = MaterialTheme.colorScheme.onSurfaceVariant
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        // Fill side: a filled square glyph
-        Box(
-            modifier =
-                Modifier
-                    .size(20.dp)
-                    .background(
-                        color = if (current == TapMode.Fill) active else inactive,
-                        shape = RoundedCornerShape(3.dp),
-                    ),
-        )
-
-        Spacer(Modifier.width(12.dp))
-
-        Switch(
-            checked = current == TapMode.Mark,
-            onCheckedChange = { onToggle() },
-        )
-
-        Spacer(Modifier.width(12.dp))
-
-        // Mark side: an X glyph
-        Text(
-            text = "✕",
-            style = MaterialTheme.typography.titleLarge,
-            color = if (current == TapMode.Mark) active else inactive,
-        )
+    val modes = listOf(TapMode.Fill, TapMode.Mark)
+    SingleChoiceSegmentedButtonRow {
+        modes.forEachIndexed { index, mode ->
+            SegmentedButton(
+                selected = current == mode,
+                onClick = { if (current != mode) onToggle() },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                icon = {
+                    when (mode) {
+                        TapMode.Fill ->
+                            Box(
+                                modifier = Modifier
+                                    .size(SegmentedButtonDefaults.IconSize)
+                                    .background(
+                                        color = LocalContentColor.current,
+                                        shape = RoundedCornerShape(2.dp),
+                                    ),
+                            )
+                        TapMode.Mark ->
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = null,
+                                modifier = Modifier.size(SegmentedButtonDefaults.IconSize),
+                            )
+                    }
+                },
+                label = {
+                    Text(
+                        color = MaterialTheme.colorScheme.primary,
+                        text =
+                            when (mode) {
+                                TapMode.Fill -> "Fill"
+                                TapMode.Mark -> "Mark"
+                            },
+                    )
+                },
+            )
+        }
     }
 }
 
@@ -156,6 +177,8 @@ private fun ColumnClues(puzzle: Puzzle) {
                 }
             }
         }
+        // Mirror the gutter on the right so the grid sits centred.
+        Spacer(Modifier.width(GUTTER))
     }
 }
 
@@ -182,16 +205,29 @@ private fun Cell(
     size: Dp,
     onTap: () -> Unit,
 ) {
-    val color = when (state) {
-        CellState.Empty -> MaterialTheme.colorScheme.surfaceVariant
-        CellState.Filled -> MaterialTheme.colorScheme.primary
-        CellState.Marked -> MaterialTheme.colorScheme.tertiary
-    }
+    val color =
+        if (state == CellState.Filled) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        }
+
     Box(
-        modifier = Modifier
-            .size(size)
-            .padding(2.dp)
-            .background(color = color, shape = RoundedCornerShape(4.dp))
-            .clickable { onTap() },
-    )
+        modifier =
+            Modifier
+                .size(size)
+                .padding(2.dp)
+                .background(color = color, shape = RoundedCornerShape(4.dp))
+                .clickable { onTap() },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (state == CellState.Marked) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Marked",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxSize().padding(8.dp),
+            )
+        }
+    }
 }

@@ -56,6 +56,13 @@ class GameViewModel : ViewModel() {
     fun toggleTapMode() {
         _tapMode.value = if (_tapMode.value == TapMode.Fill) TapMode.Mark else TapMode.Fill
     }
+
+    fun reset() {
+        _board.value = emptyBoardFor(puzzle)
+        _gameStatus.value = GameStatus.Playing
+        _lives.value = 3
+        _tapMode.value = TapMode.Fill
+    }
 }
 
 private fun emptyBoardFor(puzzle: Puzzle): Board {
