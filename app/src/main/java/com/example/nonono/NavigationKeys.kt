@@ -6,3 +6,5 @@ import kotlinx.serialization.Serializable
 @Serializable data object Home : NavKey
 
 @Serializable data object Game : NavKey
+
+@Serializable data object Settings : NavKey

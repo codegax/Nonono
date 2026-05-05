@@ -1,9 +1,7 @@
 package com.example.nonono.ui.home
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +41,7 @@ import com.example.nonono.domain.samplePuzzles
 @Composable
 fun HomeScreen(
     onPlay: () -> Unit,
+    onSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -53,8 +51,7 @@ fun HomeScreen(
             .padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(32.dp),
     ) {
-
-        TopBar(onSettings = { /* TODO */ })
+        TopBar(onSettings = onSettings)
 
         DailyCard(onPlay = onPlay)
 

@@ -1,6 +1,7 @@
 package com.example.nonono.ui.game
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.nonono.domain.Board
 import com.example.nonono.domain.CellState
 import com.example.nonono.domain.GameStatus
@@ -8,12 +9,13 @@ import com.example.nonono.domain.Level
 import com.example.nonono.domain.Puzzle
 import com.example.nonono.domain.TapMode
 import com.example.nonono.domain.samplePuzzles
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 class GameViewModel : ViewModel() {
-
     private val _level = MutableStateFlow(samplePuzzles.random())
     val level: StateFlow<Level> = _level.asStateFlow()
 
@@ -43,7 +45,8 @@ class GameViewModel : ViewModel() {
                     TapMode.Mark -> CellState.Marked
                 }
 
-            var updated = current.set(x, y, solutionState)
+            val updated = current.set(x, y, solutionState)
+            _board.value = updated
 
             if (solutionState == stateSelected) {
                 if (updated.matchesFills(solution)) _gameStatus.value = GameStatus.Won
@@ -53,46 +56,57 @@ class GameViewModel : ViewModel() {
                 if (newLives < 1) _gameStatus.value = GameStatus.Lost
             }
 
-            val solutionRow = solution.row(y)
-            val updatedRow = updated.row(y)
-            if (solutionRow.count { it == CellState.Filled } == updatedRow.count { it == CellState.Filled }) {
-                updated = fillRow(y, updated, solution)
+            viewModelScope.launch {
+                staggerFillRowIfSatisfied(y)
+                staggerFillColumnIfSatisfied(x)
             }
-
-            val solutionColumn = solution.column(x)
-            val updatedColumn = updated.column(x)
-            if (solutionColumn.count { it == CellState.Filled } == updatedColumn.count { it == CellState.Filled }) {
-                updated = fillColumn(x, updated, solution)
-            }
-
-            _board.value = updated
         }
     }
 
-    private fun fillRow(
-        y: Int,
-        current: Board,
-        solution: Board,
-    ): Board {
-        val newCells = current.cells.toMutableList()
+    private suspend fun staggerFillRowIfSatisfied(y: Int) {
+        val solution = _level.value.solution
+        val board = _board.value
+        val solutionFilled = solution.row(y).count { it == CellState.Filled }
+        val boardFilled = board.row(y).count { it == CellState.Filled }
+        if (solutionFilled != boardFilled) return
+
+        var current = board
         for (x in 0 until current.width) {
-            val target = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
-            newCells[y * current.width + x] = target
+            if (current.get(x, y) == CellState.Empty) {
+                val target =
+                    if (solution.get(x, y) == CellState.Filled) {
+                        CellState.Filled
+                    } else {
+                        CellState.Marked
+                    }
+                current = current.set(x, y, target)
+                _board.value = current
+                delay(STAGGER_MS)
+            }
         }
-        return current.copy(cells = newCells)
     }
 
-    private fun fillColumn(
-        x: Int,
-        current: Board,
-        solution: Board,
-    ): Board {
-        val newCells = current.cells.toMutableList()
+    private suspend fun staggerFillColumnIfSatisfied(x: Int) {
+        val solution = _level.value.solution
+        val board = _board.value
+        val solutionFilled = solution.column(x).count { it == CellState.Filled }
+        val boardFilled = board.column(x).count { it == CellState.Filled }
+        if (solutionFilled != boardFilled) return
+
+        var current = board
         for (y in 0 until current.height) {
-            val target = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
-            newCells[y * current.width + x] = target
+            if (current.get(x, y) == CellState.Empty) {
+                val target =
+                    if (solution.get(x, y) == CellState.Filled) {
+                        CellState.Filled
+                    } else {
+                        CellState.Marked
+                    }
+                current = current.set(x, y, target)
+                _board.value = current
+                delay(STAGGER_MS)
+            }
         }
-        return current.copy(cells = newCells)
     }
 
     fun toggleTapMode() {
@@ -100,7 +114,16 @@ class GameViewModel : ViewModel() {
     }
 
     fun reset() {
-        val next = samplePuzzles.random()
+        _board.value = emptyBoardFor(_level.value.puzzle)
+        _gameStatus.value = GameStatus.Playing
+        _lives.value = 3
+        _tapMode.value = TapMode.Fill
+    }
+
+    fun nextPuzzle() {
+        val current = _level.value
+        val others = samplePuzzles.filter { it != current }
+        val next = if (others.isEmpty()) samplePuzzles.random() else others.random()
         _level.value = next
         _board.value = emptyBoardFor(next.puzzle)
         _gameStatus.value = GameStatus.Playing
@@ -108,6 +131,8 @@ class GameViewModel : ViewModel() {
         _tapMode.value = TapMode.Fill
     }
 }
+
+private const val STAGGER_MS = 40L
 
 private fun emptyBoardFor(puzzle: Puzzle): Board {
     val width = puzzle.cols.size

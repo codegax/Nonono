@@ -1,5 +1,18 @@
 package com.example.nonono.ui.game
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -9,34 +22,55 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nonono.domain.CellState
 import com.example.nonono.domain.GameStatus
+import com.example.nonono.domain.Level
 import com.example.nonono.domain.Puzzle
 import com.example.nonono.domain.TapMode
 import kotlin.math.abs
@@ -58,134 +92,355 @@ fun GameScreen(
     val tapMode by viewModel.tapMode.collectAsStateWithLifecycle()
     val density = LocalDensity.current
 
-    Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = level.name,
-            style = MaterialTheme.typography.headlineMedium,
-        )
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            TopBar(
+                level = level,
+                lives = lives,
+                onBack = onBack,
+                onRestart = viewModel::reset,
+                onNewPuzzle = viewModel::nextPuzzle,
+            )
 
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            text = "❤️".repeat(lives),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.error,
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            text =
-                when (gameStatus) {
-                    GameStatus.Won -> "You WON!"
-                    GameStatus.Lost -> "Sorry, You lost!"
-                    else -> "Tap cells to fill the puzzle"
-                },
-            style = MaterialTheme.typography.bodyLarge,
-            color =
-                if (gameStatus == GameStatus.Won) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        ColumnClues(puzzle)
-
-        Row(verticalAlignment = Alignment.Top) {
-            Column {
-                for (y in 0 until board.height) {
-                    RowClue(puzzle.rows[y])
-                }
+            AnimatedVisibility(visible = gameStatus == GameStatus.Won) {
+                StatusBanner(
+                    won = true,
+                    onRestart = viewModel::reset,
+                    onNext = viewModel::nextPuzzle,
+                )
+            }
+            AnimatedVisibility(visible = gameStatus == GameStatus.Lost) {
+                StatusBanner(
+                    won = false,
+                    onRestart = viewModel::reset,
+                    onNext = viewModel::nextPuzzle,
+                )
             }
 
             Box(
-                modifier = Modifier.pointerInput(board.width, board.height) {
-                    val cellPx = with(density) { CELL.toPx() }
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    ColumnClues(puzzle)
 
-                        fun cellAt(offset: Offset): Pair<Int, Int>? {
-                            val cx = (offset.x / cellPx).toInt()
-                            val cy = (offset.y / cellPx).toInt()
-                            return if (cx in 0 until board.width && cy in 0 until board.height) {
-                                cx to cy
-                            } else {
-                                null
+                    Row(verticalAlignment = Alignment.Top) {
+                        Column {
+                            for (y in 0 until board.height) {
+                                RowClue(puzzle.rows[y])
                             }
                         }
 
-                        val downCell = cellAt(down.position)
-                        if (downCell != null) {
-                            viewModel.onCellTap(downCell.first, downCell.second)
-                        }
+                        Box(
+                            modifier = Modifier.pointerInput(board.width, board.height) {
+                                val cellPx = with(density) { CELL.toPx() }
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
 
-                        var lastCell = downCell
-                        var lockedAxis: Char? = null
+                                    fun cellAt(offset: Offset): Pair<Int, Int>? {
+                                        val cx = (offset.x / cellPx).toInt()
+                                        val cy = (offset.y / cellPx).toInt()
+                                        return if (cx in 0 until board.width && cy in 0 until board.height) {
+                                            cx to cy
+                                        } else {
+                                            null
+                                        }
+                                    }
 
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
+                                    val downCell = cellAt(down.position)
+                                    if (downCell != null) {
+                                        viewModel.onCellTap(downCell.first, downCell.second)
+                                    }
 
-                            val cell = cellAt(change.position) ?: continue
-                            val (cx, cy) = cell
+                                    var lastCell = downCell
+                                    var lockedAxis: Char? = null
 
-                            if (lockedAxis == null && downCell != null) {
-                                val dx = abs(cx - downCell.first)
-                                val dy = abs(cy - downCell.second)
-                                if (dx + dy > 0) {
-                                    lockedAxis = if (dx >= dy) 'h' else 'v'
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull() ?: break
+                                        if (!change.pressed) break
+
+                                        val cell = cellAt(change.position) ?: continue
+                                        val (cx, cy) = cell
+
+                                        if (lockedAxis == null && downCell != null) {
+                                            val dx = abs(cx - downCell.first)
+                                            val dy = abs(cy - downCell.second)
+                                            if (dx + dy > 0) {
+                                                lockedAxis = if (dx >= dy) 'h' else 'v'
+                                            }
+                                        }
+
+                                        val targetX = if (lockedAxis == 'h') cx else (downCell?.first ?: cx)
+                                        val targetY = if (lockedAxis == 'v') cy else (downCell?.second ?: cy)
+                                        val target = targetX to targetY
+
+                                        if (target != lastCell) {
+                                            viewModel.onCellTap(targetX, targetY)
+                                            lastCell = target
+                                        }
+                                    }
+                                }
+                            },
+                        ) {
+                            Column {
+                                for (y in 0 until board.height) {
+                                    Row {
+                                        for (x in 0 until board.width) {
+                                            Cell(state = board.get(x, y), size = CELL)
+                                        }
+                                    }
                                 }
                             }
-
-                            val targetX = if (lockedAxis == 'h') cx else (downCell?.first ?: cx)
-                            val targetY = if (lockedAxis == 'v') cy else (downCell?.second ?: cy)
-                            val target = targetX to targetY
-
-                            if (target != lastCell) {
-                                viewModel.onCellTap(targetX, targetY)
-                                lastCell = target
-                            }
                         }
-                    }
-                },
-            ) {
-                Column {
-                    for (y in 0 until board.height) {
-                        Row {
-                            for (x in 0 until board.width) {
-                                Cell(state = board.get(x, y), size = CELL)
-                            }
-                        }
+
+                        Spacer(Modifier.width(GUTTER))
                     }
                 }
             }
 
-            Spacer(Modifier.width(GUTTER))
+            BottomBar(
+                tapMode = tapMode,
+                enabled = gameStatus == GameStatus.Playing,
+                onToggle = viewModel::toggleTapMode,
+            )
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        TapModeToggle(
-            current = tapMode,
-            gameStatus = gameStatus,
-            onToggle = viewModel::toggleTapMode,
+        Confetti(
+            active = gameStatus == GameStatus.Won,
+            modifier = Modifier.fillMaxSize(),
         )
+    }
+}
 
-        Spacer(Modifier.height(16.dp))
+@Composable
+private fun TopBar(
+    level: Level,
+    lives: Int,
+    onBack: () -> Unit,
+    onRestart: () -> Unit,
+    onNewPuzzle: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
 
-        OutlinedButton(onClick = viewModel::reset) {
-            Text("New game")
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.Filled.ArrowBack,
+                contentDescription = "Back",
+            )
         }
 
-        OutlinedButton(onClick = onBack) {
-            Text("Menu")
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 4.dp),
+        ) {
+            Text(
+                text = level.name,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "${level.solution.width} × ${level.solution.height}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        LivesIndicator(lives = lives, max = 3)
+
+        Spacer(Modifier.width(4.dp))
+
+        Box {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = "More",
+                )
+            }
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Restart") },
+                    onClick = {
+                        menuOpen = false
+                        onRestart()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = null,
+                        )
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("New puzzle") },
+                    onClick = {
+                        menuOpen = false
+                        onNewPuzzle()
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LivesIndicator(lives: Int, max: Int) {
+    val shake = remember { Animatable(0f) }
+    var prevLives by remember { mutableStateOf(lives) }
+
+    LaunchedEffect(lives) {
+        if (lives < prevLives) {
+            shake.snapTo(0f)
+            shake.animateTo(
+                targetValue = 0f,
+                animationSpec = keyframes {
+                    durationMillis = 360
+                    0f at 0
+                    -8f at 60
+                    8f at 120
+                    -6f at 200
+                    4f at 280
+                    0f at 360
+                },
+            )
+        }
+        prevLives = lives
+    }
+
+    Row(
+        modifier = Modifier.offset(x = shake.value.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        for (i in 0 until max) {
+            val alive = i < lives
+            val tint by animateColorAsState(
+                targetValue = if (alive) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHighest
+                },
+                animationSpec = tween(durationMillis = 280),
+                label = "lifeTint",
+            )
+            val scale by animateFloatAsState(
+                targetValue = if (alive) 1f else 0.82f,
+                animationSpec = tween(durationMillis = 280),
+                label = "lifeScale",
+            )
+            Icon(
+                imageVector = Icons.Filled.Favorite,
+                contentDescription = if (alive) "Life remaining" else "Life lost",
+                tint = tint,
+                modifier = Modifier
+                    .size(18.dp)
+                    .scale(scale),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusBanner(
+    won: Boolean,
+    onRestart: () -> Unit,
+    onNext: () -> Unit,
+) {
+    val container = if (won) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.errorContainer
+    }
+    val onContainer = if (won) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onErrorContainer
+    }
+
+    val pulse = if (won) {
+        val infinite = rememberInfiniteTransition(label = "winPulse")
+        val v by infinite.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.015f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "winPulseScale",
+        )
+        v
+    } else {
+        1f
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pulse
+                scaleY = pulse
+            },
+        color = container,
+        contentColor = onContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = if (won) "You won" else "Out of lives",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            TextButton(onClick = if (won) onNext else onRestart) {
+                Text(text = if (won) "Next" else "Try again")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomBar(
+    tapMode: TapMode,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        tonalElevation = 2.dp,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            TapModeToggle(
+                current = tapMode,
+                enabled = enabled,
+                onToggle = onToggle,
+            )
         }
     }
 }
@@ -193,7 +448,7 @@ fun GameScreen(
 @Composable
 private fun TapModeToggle(
     current: TapMode,
-    gameStatus: GameStatus,
+    enabled: Boolean,
     onToggle: () -> Unit,
 ) {
     val modes = listOf(TapMode.Fill, TapMode.Mark)
@@ -201,40 +456,34 @@ private fun TapModeToggle(
         modes.forEachIndexed { index, mode ->
             SegmentedButton(
                 selected = current == mode,
-                enabled = gameStatus == GameStatus.Playing,
+                enabled = enabled,
                 onClick = { if (current != mode) onToggle() },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
                 icon = {
                     when (mode) {
-                        TapMode.Fill -> {
+                        TapMode.Fill ->
                             Box(
-                                modifier =
-                                    Modifier
-                                        .size(SegmentedButtonDefaults.IconSize)
-                                        .background(
-                                            color = LocalContentColor.current,
-                                            shape = RoundedCornerShape(2.dp),
-                                        ),
+                                modifier = Modifier
+                                    .size(SegmentedButtonDefaults.IconSize)
+                                    .background(
+                                        color = LocalContentColor.current,
+                                        shape = RoundedCornerShape(2.dp),
+                                    ),
                             )
-                        }
-
-                        TapMode.Mark -> {
+                        TapMode.Mark ->
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = null,
                                 modifier = Modifier.size(SegmentedButtonDefaults.IconSize),
                             )
-                        }
                     }
                 },
                 label = {
                     Text(
-                        color = MaterialTheme.colorScheme.primary,
-                        text =
-                            when (mode) {
-                                TapMode.Fill -> "Fill"
-                                TapMode.Mark -> "Mark"
-                            },
+                        text = when (mode) {
+                            TapMode.Fill -> "Fill"
+                            TapMode.Mark -> "Mark"
+                        },
                     )
                 },
             )
@@ -256,11 +505,11 @@ private fun ColumnClues(puzzle: Puzzle) {
                     Text(
                         text = n.toString(),
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
-        // Mirror the gutter on the right so the grid sits centred.
         Spacer(Modifier.width(GUTTER))
     }
 }
@@ -276,8 +525,85 @@ private fun RowClue(clue: List<Int>) {
             Text(
                 text = n.toString(),
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
+        }
+    }
+}
+
+private data class Confetto(
+    val startX: Float,
+    val startY: Float,
+    val velocityX: Float,
+    val velocityY: Float,
+    val color: Color,
+    val rotation: Float,
+    val rotationSpeed: Float,
+    val size: Float,
+)
+
+@Composable
+private fun Confetti(
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val palette = listOf(
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.error,
+        MaterialTheme.colorScheme.primaryContainer,
+        MaterialTheme.colorScheme.tertiaryContainer,
+    )
+
+    var pieces by remember { mutableStateOf<List<Confetto>>(emptyList()) }
+    val time = remember { Animatable(0f) }
+
+    LaunchedEffect(active) {
+        if (active) {
+            val random = kotlin.random.Random.Default
+            pieces = List(60) {
+                Confetto(
+                    startX = 0.2f + random.nextFloat() * 0.6f,
+                    startY = -0.05f + random.nextFloat() * 0.05f,
+                    velocityX = random.nextFloat() * 0.6f - 0.3f,
+                    velocityY = random.nextFloat() * 0.2f - 0.4f,
+                    color = palette[random.nextInt(palette.size)],
+                    rotation = random.nextFloat() * 360f,
+                    rotationSpeed = random.nextFloat() * 4f - 2f,
+                    size = 10f + random.nextFloat() * 10f,
+                )
+            }
+            time.snapTo(0f)
+            time.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 2600, easing = LinearEasing),
+            )
+            pieces = emptyList()
+        } else {
+            pieces = emptyList()
+        }
+    }
+
+    if (pieces.isEmpty()) return
+
+    Canvas(modifier = modifier) {
+        val t = time.value
+        val w = size.width
+        val h = size.height
+        for (p in pieces) {
+            val x = p.startX * w + p.velocityX * t * w
+            val y = p.startY * h + p.velocityY * t * h + 1.6f * t * t * h
+            val degrees = p.rotation + p.rotationSpeed * t * 360f
+            val alpha = (1f - (t * t)).coerceIn(0f, 1f)
+            rotate(degrees = degrees, pivot = Offset(x + p.size / 2f, y + p.size / 2f)) {
+                drawRect(
+                    color = p.color.copy(alpha = alpha),
+                    topLeft = Offset(x, y),
+                    size = Size(p.size, p.size * 0.55f),
+                )
+            }
         }
     }
 }
@@ -287,27 +613,30 @@ private fun Cell(
     state: CellState,
     size: Dp,
 ) {
-    val color =
-        if (state == CellState.Filled) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        }
+    val targetColor = if (state == CellState.Filled) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val color by animateColorAsState(
+        targetValue = targetColor,
+        animationSpec = tween(durationMillis = 160),
+        label = "cellColor",
+    )
 
     Box(
-        modifier =
-            Modifier
-                .size(size)
-                .padding(2.dp)
-                .background(color = color, shape = RoundedCornerShape(4.dp)),
+        modifier = Modifier
+            .size(size)
+            .padding(2.dp)
+            .background(color = color, shape = RoundedCornerShape(6.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        if (state == CellState.Marked) {
+        AnimatedVisibility(visible = state == CellState.Marked) {
             Icon(
                 imageVector = Icons.Filled.Close,
                 contentDescription = "Marked",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.fillMaxSize().padding(8.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size).padding(10.dp),
             )
         }
     }

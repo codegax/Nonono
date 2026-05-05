@@ -10,6 +10,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.example.nonono.ui.home.HomeScreen
 import com.example.nonono.ui.game.GameScreen
+import com.example.nonono.ui.settings.SettingsScreen
 
 @Composable
 fun MainNavigation() {
@@ -23,6 +24,13 @@ fun MainNavigation() {
                 entry<Home> {
                     HomeScreen(
                         onPlay = { backStack.add(Game) },
+                        onSettings = { backStack.add(Settings) },
+                        modifier = Modifier.safeDrawingPadding().padding(16.dp),
+                    )
+                }
+                entry<Settings> {
+                    SettingsScreen(
+                        onHome = { backStack.removeLastOrNull() },
                         modifier = Modifier.safeDrawingPadding().padding(16.dp),
                     )
                 }
