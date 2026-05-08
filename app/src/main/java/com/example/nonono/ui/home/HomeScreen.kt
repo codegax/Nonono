@@ -1,7 +1,9 @@
 package com.example.nonono.ui.home
 
+import android.app.Application
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,11 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -28,22 +30,41 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.nonono.data.DailyOutcome
+import com.example.nonono.data.currentEpochDay
 import com.example.nonono.domain.CellState
-import com.example.nonono.domain.samplePuzzles
+
+private const val LEVEL_COUNT = 10
 
 @Composable
 fun HomeScreen(
-    onPlay: () -> Unit,
+    onPlayDaily: () -> Unit,
+    onLevels: () -> Unit,
+    onEndless: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val app = LocalContext.current.applicationContext as Application
+    val viewModel: HomeViewModel = viewModel(
+        factory = viewModelFactory { initializer { HomeViewModel(app) } },
+    )
+    val dailyOutcome by viewModel.dailyOutcome.collectAsStateWithLifecycle()
+    val levelsSolved by viewModel.levelsSolvedCount.collectAsStateWithLifecycle()
+    val dailySolution = viewModel.dailySolution
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -53,9 +74,17 @@ fun HomeScreen(
     ) {
         TopBar(onSettings = onSettings)
 
-        DailyCard(onPlay = onPlay)
+        DailyCard(
+            outcome = dailyOutcome,
+            solution = dailySolution,
+            onPlay = onPlayDaily,
+        )
 
-        ModesSection(onPlay = onPlay)
+        ModesSection(
+            levelsSolved = levelsSolved,
+            onLevels = onLevels,
+            onEndless = onEndless,
+        )
 
         ActivitySection()
 
@@ -86,8 +115,13 @@ private fun TopBar(onSettings: () -> Unit) {
 }
 
 @Composable
-private fun DailyCard(onPlay: () -> Unit) {
-    val daily = samplePuzzles.first()
+private fun DailyCard(
+    outcome: DailyOutcome,
+    solution: com.example.nonono.domain.Board?,
+    onPlay: () -> Unit,
+) {
+    val locked = outcome != DailyOutcome.Pending
+    val revealed = outcome != DailyOutcome.Pending
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -108,22 +142,22 @@ private fun DailyCard(onPlay: () -> Unit) {
                     letterSpacing = 1.5.sp,
                 )
                 Text(
-                    text = daily.name,
+                    text = when (outcome) {
+                        DailyOutcome.Pending -> "Daily puzzle"
+                        DailyOutcome.Won -> "Solved"
+                        DailyOutcome.Lost -> "Come back tomorrow"
+                    },
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${daily.solution.width} × ${daily.solution.height} · 3 lives",
+                    text = "5 × 5 · 3 lives · one attempt",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            PuzzlePreview(
-                cells = daily.solution.cells,
-                width = daily.solution.width,
-                height = daily.solution.height,
-            )
+            DailyPreview(solution = solution, revealed = revealed)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -131,12 +165,13 @@ private fun DailyCard(onPlay: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Resets in 7h 32m",
+                    text = "Resets in ${resetCountdown()}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 FilledIconButton(
                     onClick = onPlay,
+                    enabled = !locked,
                     modifier = Modifier.size(56.dp),
                     shape = RoundedCornerShape(20.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
@@ -145,12 +180,50 @@ private fun DailyCard(onPlay: () -> Unit) {
                     ),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Play",
+                        imageVector = if (outcome == DailyOutcome.Won) Icons.Filled.Check else Icons.Filled.PlayArrow,
+                        contentDescription = if (locked) "Done" else "Play",
                         modifier = Modifier.size(28.dp),
                     )
                 }
             }
+        }
+    }
+}
+
+private fun resetCountdown(): String {
+    val now = System.currentTimeMillis()
+    val nextDayMs = (currentEpochDay() + 1L) * 86_400_000L
+    val remainingMs = (nextDayMs - now).coerceAtLeast(0L)
+    val hours = remainingMs / (60L * 60L * 1000L)
+    val minutes = (remainingMs / (60L * 1000L)) % 60L
+    return "${hours}h ${minutes}m"
+}
+
+@Composable
+private fun DailyPreview(
+    solution: com.example.nonono.domain.Board?,
+    revealed: Boolean,
+) {
+    val cell = 18.dp
+    val gap = 2.dp
+    val width = solution?.width ?: 5
+    val height = solution?.height ?: 5
+    val totalWidth = cell * width + gap * (width - 1)
+    val totalHeight = cell * height + gap * (height - 1)
+
+    Box(
+        modifier = Modifier.size(width = totalWidth, height = totalHeight),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (revealed && solution != null) {
+            PuzzlePreview(cells = solution.cells, width = width, height = height)
+        } else {
+            Text(
+                text = "?",
+                style = MaterialTheme.typography.displayMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -189,7 +262,11 @@ private fun PuzzlePreview(
 }
 
 @Composable
-private fun ModesSection(onPlay: () -> Unit) {
+private fun ModesSection(
+    levelsSolved: Int,
+    onLevels: () -> Unit,
+    onEndless: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionLabel("MODES")
         Row(
@@ -198,14 +275,14 @@ private fun ModesSection(onPlay: () -> Unit) {
         ) {
             ModeTile(
                 title = "Levels",
-                subtitle = "3 of 10 solved",
-                onClick = onPlay,
+                subtitle = "$levelsSolved of $LEVEL_COUNT solved",
+                onClick = onLevels,
                 modifier = Modifier.weight(1f),
             )
             ModeTile(
                 title = "Endless",
                 subtitle = "Random puzzles",
-                onClick = onPlay,
+                onClick = onEndless,
                 modifier = Modifier.weight(1f),
             )
         }

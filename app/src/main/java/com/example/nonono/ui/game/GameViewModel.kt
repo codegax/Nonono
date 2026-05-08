@@ -1,22 +1,37 @@
 package com.example.nonono.ui.game
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.nonono.data.DailyOutcome
+import com.example.nonono.data.DailyPlayRepository
+import com.example.nonono.data.LevelsProgressRepository
+import com.example.nonono.data.currentEpochDay
 import com.example.nonono.domain.Board
 import com.example.nonono.domain.CellState
 import com.example.nonono.domain.GameStatus
 import com.example.nonono.domain.Level
 import com.example.nonono.domain.Puzzle
 import com.example.nonono.domain.TapMode
+import com.example.nonono.domain.generateLevel
 import com.example.nonono.domain.samplePuzzles
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
-class GameViewModel : ViewModel() {
-    private val _level = MutableStateFlow(samplePuzzles.random())
+class GameViewModel(
+    app: Application,
+    val mode: GameMode,
+) : AndroidViewModel(app) {
+    private val dailyRepo = DailyPlayRepository(app)
+    private val levelsRepo = LevelsProgressRepository(app)
+
+    private val _level = MutableStateFlow(generateForMode(mode))
     val level: StateFlow<Level> = _level.asStateFlow()
 
     private val _board = MutableStateFlow(emptyBoardFor(_level.value.puzzle))
@@ -31,35 +46,36 @@ class GameViewModel : ViewModel() {
     private val _tapMode = MutableStateFlow(TapMode.Fill)
     val tapMode: StateFlow<TapMode> = _tapMode.asStateFlow()
 
-    fun onCellTap(
-        x: Int,
-        y: Int,
-    ) {
+    val canRestart: Boolean get() = mode !is GameMode.Daily
+    val canNextPuzzle: Boolean get() = mode is GameMode.Endless
+    val isDaily: Boolean get() = mode is GameMode.Daily
+
+    fun onCellTap(x: Int, y: Int) {
         val solution = _level.value.solution
         val current = _board.value
-        if (_gameStatus.value == GameStatus.Playing && current.get(x, y) == CellState.Empty) {
-            val solutionState = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
-            val stateSelected =
-                when (_tapMode.value) {
-                    TapMode.Fill -> CellState.Filled
-                    TapMode.Mark -> CellState.Marked
-                }
+        if (_gameStatus.value != GameStatus.Playing) return
+        if (current.get(x, y) != CellState.Empty) return
 
-            val updated = current.set(x, y, solutionState)
-            _board.value = updated
+        val solutionState = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
+        val stateSelected = when (_tapMode.value) {
+            TapMode.Fill -> CellState.Filled
+            TapMode.Mark -> CellState.Marked
+        }
 
-            if (solutionState == stateSelected) {
-                if (updated.matchesFills(solution)) _gameStatus.value = GameStatus.Won
-            } else {
-                val newLives = _lives.value - 1
-                _lives.value = newLives
-                if (newLives < 1) _gameStatus.value = GameStatus.Lost
-            }
+        val updated = current.set(x, y, solutionState)
+        _board.value = updated
 
-            viewModelScope.launch {
-                staggerFillRowIfSatisfied(y)
-                staggerFillColumnIfSatisfied(x)
-            }
+        if (solutionState == stateSelected) {
+            if (updated.matchesFills(solution)) setStatus(GameStatus.Won)
+        } else {
+            val newLives = _lives.value - 1
+            _lives.value = newLives
+            if (newLives < 1) setStatus(GameStatus.Lost)
+        }
+
+        viewModelScope.launch {
+            staggerFillRowIfSatisfied(y)
+            staggerFillColumnIfSatisfied(x)
         }
     }
 
@@ -73,12 +89,7 @@ class GameViewModel : ViewModel() {
         var current = board
         for (x in 0 until current.width) {
             if (current.get(x, y) == CellState.Empty) {
-                val target =
-                    if (solution.get(x, y) == CellState.Filled) {
-                        CellState.Filled
-                    } else {
-                        CellState.Marked
-                    }
+                val target = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
                 current = current.set(x, y, target)
                 _board.value = current
                 delay(STAGGER_MS)
@@ -96,12 +107,7 @@ class GameViewModel : ViewModel() {
         var current = board
         for (y in 0 until current.height) {
             if (current.get(x, y) == CellState.Empty) {
-                val target =
-                    if (solution.get(x, y) == CellState.Filled) {
-                        CellState.Filled
-                    } else {
-                        CellState.Marked
-                    }
+                val target = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
                 current = current.set(x, y, target)
                 _board.value = current
                 delay(STAGGER_MS)
@@ -114,6 +120,7 @@ class GameViewModel : ViewModel() {
     }
 
     fun reset() {
+        if (!canRestart) return
         _board.value = emptyBoardFor(_level.value.puzzle)
         _gameStatus.value = GameStatus.Playing
         _lives.value = 3
@@ -121,27 +128,64 @@ class GameViewModel : ViewModel() {
     }
 
     fun nextPuzzle() {
-        val current = _level.value
-        val others = samplePuzzles.filter { it != current }
-        val next = if (others.isEmpty()) samplePuzzles.random() else others.random()
-        _level.value = next
-        _board.value = emptyBoardFor(next.puzzle)
+        if (!canNextPuzzle) return
+        val nextLevel = generateLevel(name = "Endless", seed = Random.nextLong(), width = GRID_SIZE, height = GRID_SIZE)
+            ?: samplePuzzles.first()
+        _level.value = nextLevel
+        _board.value = emptyBoardFor(nextLevel.puzzle)
         _gameStatus.value = GameStatus.Playing
         _lives.value = 3
         _tapMode.value = TapMode.Fill
     }
+
+    private fun setStatus(newStatus: GameStatus) {
+        if (_gameStatus.value == newStatus) return
+        _gameStatus.value = newStatus
+        if (newStatus != GameStatus.Won && newStatus != GameStatus.Lost) return
+
+        viewModelScope.launch {
+            when (val m = mode) {
+                is GameMode.Daily -> {
+                    val outcome = if (newStatus == GameStatus.Won) DailyOutcome.Won else DailyOutcome.Lost
+                    dailyRepo.recordOutcome(outcome)
+                }
+                is GameMode.Level -> {
+                    if (newStatus == GameStatus.Won) levelsRepo.markSolved(m.index)
+                }
+                is GameMode.Endless -> Unit
+            }
+        }
+    }
+
+    companion object {
+        fun factory(app: Application, mode: GameMode) = viewModelFactory {
+            initializer { GameViewModel(app, mode) }
+        }
+    }
 }
 
 private const val STAGGER_MS = 40L
+private const val GRID_SIZE = 5
+
+private fun generateForMode(mode: GameMode): Level {
+    val seed = when (mode) {
+        is GameMode.Daily -> currentEpochDay()
+        is GameMode.Level -> currentEpochDay() * 10L + mode.index
+        is GameMode.Endless -> mode.seed
+    }
+    val name = when (mode) {
+        is GameMode.Daily -> "Today"
+        is GameMode.Level -> "Level ${mode.index + 1}"
+        is GameMode.Endless -> "Endless"
+    }
+    return generateLevel(name = name, seed = seed, width = GRID_SIZE, height = GRID_SIZE)
+        ?: samplePuzzles.first()
+}
 
 private fun emptyBoardFor(puzzle: Puzzle): Board {
     val width = puzzle.cols.size
     val height = puzzle.rows.size
-    return Board(
-        width = width,
-        height = height,
-        cells = List(width * height) { CellState.Empty },
-    )
+    return Board(width = width, height = height, cells = List(width * height) { CellState.Empty })
 }
 
 private fun Board.matchesFills(solution: Board): Boolean {

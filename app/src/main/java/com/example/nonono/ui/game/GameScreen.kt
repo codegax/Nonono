@@ -29,7 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
@@ -62,10 +62,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import android.app.Application
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nonono.domain.CellState
@@ -80,9 +82,13 @@ private val GUTTER = 56.dp
 
 @Composable
 fun GameScreen(
+    mode: GameMode,
     onBack: () -> Unit = {},
     modifier: Modifier = Modifier,
-    viewModel: GameViewModel = viewModel(),
+    viewModel: GameViewModel = viewModel(
+        key = mode.toString(),
+        factory = GameViewModel.factory(LocalContext.current.applicationContext as Application, mode),
+    ),
 ) {
     val level by viewModel.level.collectAsStateWithLifecycle()
     val puzzle = level.puzzle
@@ -97,23 +103,29 @@ fun GameScreen(
             TopBar(
                 level = level,
                 lives = lives,
+                canRestart = viewModel.canRestart,
+                canNextPuzzle = viewModel.canNextPuzzle,
                 onBack = onBack,
                 onRestart = viewModel::reset,
                 onNewPuzzle = viewModel::nextPuzzle,
             )
 
             AnimatedVisibility(visible = gameStatus == GameStatus.Won) {
+                val (label, action) = winAction(viewModel.mode, viewModel::nextPuzzle, onBack)
                 StatusBanner(
                     won = true,
-                    onRestart = viewModel::reset,
-                    onNext = viewModel::nextPuzzle,
+                    title = if (viewModel.isDaily) "Daily complete" else "You won",
+                    actionLabel = label,
+                    onAction = action,
                 )
             }
             AnimatedVisibility(visible = gameStatus == GameStatus.Lost) {
+                val (label, action) = lossAction(viewModel.mode, viewModel::reset)
                 StatusBanner(
                     won = false,
-                    onRestart = viewModel::reset,
-                    onNext = viewModel::nextPuzzle,
+                    title = if (viewModel.isDaily) "Come back tomorrow" else "Out of lives",
+                    actionLabel = label,
+                    onAction = action,
                 )
             }
 
@@ -219,11 +231,14 @@ fun GameScreen(
 private fun TopBar(
     level: Level,
     lives: Int,
+    canRestart: Boolean,
+    canNextPuzzle: Boolean,
     onBack: () -> Unit,
     onRestart: () -> Unit,
     onNewPuzzle: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val hasMenu = canRestart || canNextPuzzle
 
     Row(
         modifier = Modifier
@@ -233,7 +248,7 @@ private fun TopBar(
     ) {
         IconButton(onClick = onBack) {
             Icon(
-                imageVector = Icons.Filled.ArrowBack,
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
             )
         }
@@ -259,43 +274,49 @@ private fun TopBar(
 
         Spacer(Modifier.width(4.dp))
 
-        Box {
-            IconButton(onClick = { menuOpen = true }) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "More",
-                )
-            }
-            DropdownMenu(
-                expanded = menuOpen,
-                onDismissRequest = { menuOpen = false },
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Restart") },
-                    onClick = {
-                        menuOpen = false
-                        onRestart()
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = null,
+        if (hasMenu) {
+            Box {
+                IconButton(onClick = { menuOpen = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "More",
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                ) {
+                    if (canRestart) {
+                        DropdownMenuItem(
+                            text = { Text("Restart") },
+                            onClick = {
+                                menuOpen = false
+                                onRestart()
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = null,
+                                )
+                            },
                         )
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("New puzzle") },
-                    onClick = {
-                        menuOpen = false
-                        onNewPuzzle()
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = null,
+                    }
+                    if (canNextPuzzle) {
+                        DropdownMenuItem(
+                            text = { Text("New puzzle") },
+                            onClick = {
+                                menuOpen = false
+                                onNewPuzzle()
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = null,
+                                )
+                            },
                         )
-                    },
-                )
+                    }
+                }
             }
         }
     }
@@ -358,11 +379,30 @@ private fun LivesIndicator(lives: Int, max: Int) {
     }
 }
 
+private fun winAction(
+    mode: GameMode,
+    onNext: () -> Unit,
+    onBack: () -> Unit,
+): Pair<String?, () -> Unit> = when (mode) {
+    is GameMode.Daily -> null to {}
+    is GameMode.Level -> "Back to levels" to onBack
+    is GameMode.Endless -> "Next" to onNext
+}
+
+private fun lossAction(
+    mode: GameMode,
+    onRestart: () -> Unit,
+): Pair<String?, () -> Unit> = when (mode) {
+    is GameMode.Daily -> null to {}
+    is GameMode.Level, is GameMode.Endless -> "Try again" to onRestart
+}
+
 @Composable
 private fun StatusBanner(
     won: Boolean,
-    onRestart: () -> Unit,
-    onNext: () -> Unit,
+    title: String,
+    actionLabel: String?,
+    onAction: () -> Unit,
 ) {
     val container = if (won) {
         MaterialTheme.colorScheme.primaryContainer
@@ -409,12 +449,14 @@ private fun StatusBanner(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = if (won) "You won" else "Out of lives",
+                text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
-            TextButton(onClick = if (won) onNext else onRestart) {
-                Text(text = if (won) "Next" else "Try again")
+            if (actionLabel != null) {
+                TextButton(onClick = onAction) {
+                    Text(text = actionLabel)
+                }
             }
         }
     }
