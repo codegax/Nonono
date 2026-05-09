@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.nonono.data.DailyOutcome
 import com.example.nonono.data.DailyPlayRepository
+import com.example.nonono.data.InProgressDailyRepository
 import com.example.nonono.data.LevelsProgressRepository
 import com.example.nonono.data.currentEpochDay
 import com.example.nonono.domain.Board
@@ -21,6 +22,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -30,6 +33,7 @@ class GameViewModel(
 ) : AndroidViewModel(app) {
     private val dailyRepo = DailyPlayRepository(app)
     private val levelsRepo = LevelsProgressRepository(app)
+    private val inProgressRepo = InProgressDailyRepository(app)
 
     private val _level = MutableStateFlow(generateForMode(mode))
     val level: StateFlow<Level> = _level.asStateFlow()
@@ -46,11 +50,36 @@ class GameViewModel(
     private val _tapMode = MutableStateFlow(TapMode.Fill)
     val tapMode: StateFlow<TapMode> = _tapMode.asStateFlow()
 
+    private val initialized = MutableStateFlow(mode !is GameMode.Daily)
+
     val canRestart: Boolean get() = mode !is GameMode.Daily
     val canNextPuzzle: Boolean get() = mode is GameMode.Endless
     val isDaily: Boolean get() = mode is GameMode.Daily
 
+    init {
+        if (mode is GameMode.Daily) {
+            viewModelScope.launch {
+                inProgressRepo.load()?.let { saved ->
+                    _board.value = saved.board
+                    _lives.value = saved.lives
+                    _gameStatus.value = saved.status
+                }
+                initialized.value = true
+                combine(_board, _lives, _gameStatus) { b, l, s -> Triple(b, l, s) }
+                    .drop(1)
+                    .collect { (board, lives, status) ->
+                        if (status == GameStatus.Playing) {
+                            inProgressRepo.save(board, lives, status)
+                        } else {
+                            inProgressRepo.clear()
+                        }
+                    }
+            }
+        }
+    }
+
     fun onCellTap(x: Int, y: Int) {
+        if (!initialized.value) return
         val solution = _level.value.solution
         val current = _board.value
         if (_gameStatus.value != GameStatus.Playing) return
