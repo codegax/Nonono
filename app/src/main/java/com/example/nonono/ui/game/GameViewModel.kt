@@ -9,6 +9,7 @@ import com.example.nonono.data.DailyOutcome
 import com.example.nonono.data.DailyPlayRepository
 import com.example.nonono.data.InProgressDailyRepository
 import com.example.nonono.data.LevelsProgressRepository
+import com.example.nonono.data.UserSettingsRepository
 import com.example.nonono.data.currentEpochDay
 import com.example.nonono.domain.Board
 import com.example.nonono.domain.CellState
@@ -20,10 +21,12 @@ import com.example.nonono.domain.generateLevel
 import com.example.nonono.domain.samplePuzzles
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -34,6 +37,13 @@ class GameViewModel(
     private val dailyRepo = DailyPlayRepository(app)
     private val levelsRepo = LevelsProgressRepository(app)
     private val inProgressRepo = InProgressDailyRepository(app)
+    private val userSettings = UserSettingsRepository(app)
+
+    private val autoMark: StateFlow<Boolean> = userSettings.automaticRowSolver.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = true,
+    )
 
     private val _level = MutableStateFlow(generateForMode(mode))
     val level: StateFlow<Level> = _level.asStateFlow()
@@ -102,9 +112,11 @@ class GameViewModel(
             if (newLives < 1) setStatus(GameStatus.Lost)
         }
 
-        viewModelScope.launch {
-            staggerFillRowIfSatisfied(y)
-            staggerFillColumnIfSatisfied(x)
+        if (autoMark.value) {
+            viewModelScope.launch {
+                staggerFillRowIfSatisfied(y)
+                staggerFillColumnIfSatisfied(x)
+            }
         }
     }
 
