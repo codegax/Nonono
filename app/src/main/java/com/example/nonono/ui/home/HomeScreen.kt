@@ -63,6 +63,7 @@ fun HomeScreen(
     )
     val dailyOutcome by viewModel.dailyOutcome.collectAsStateWithLifecycle()
     val levelsSolved by viewModel.levelsSolvedCount.collectAsStateWithLifecycle()
+    val streak by viewModel.streak.collectAsStateWithLifecycle()
     val dailySolution = viewModel.dailySolution
 
     Column(
@@ -86,7 +87,7 @@ fun HomeScreen(
             onEndless = onEndless,
         )
 
-        ActivitySection()
+        ActivitySection(streak = streak)
 
         Spacer(Modifier.height(16.dp))
     }
@@ -320,11 +321,14 @@ private fun ModeTile(
 }
 
 @Composable
-private fun ActivitySection() {
+private fun ActivitySection(streak: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionLabel("ACTIVITY")
         Column {
-            ActivityRow("Current streak", "5 days")
+            ActivityRow(
+                label = "Current streak",
+                value = if (streak == 1) "1 day" else "$streak days",
+            )
             ThinDivider()
             ActivityRow("Best time", "0:42")
             ThinDivider()

@@ -9,6 +9,7 @@ import com.example.nonono.data.DailyOutcome
 import com.example.nonono.data.DailyPlayRepository
 import com.example.nonono.data.InProgressDailyRepository
 import com.example.nonono.data.LevelsProgressRepository
+import com.example.nonono.data.StreakRepository
 import com.example.nonono.data.UserSettingsRepository
 import com.example.nonono.data.currentEpochDay
 import com.example.nonono.domain.Board
@@ -37,6 +38,7 @@ class GameViewModel(
     private val dailyRepo = DailyPlayRepository(app)
     private val levelsRepo = LevelsProgressRepository(app)
     private val inProgressRepo = InProgressDailyRepository(app)
+    private val streakRepo = StreakRepository(app)
     private val userSettings = UserSettingsRepository(app)
 
     private val autoMark: StateFlow<Boolean> = userSettings.automaticRowSolver.stateIn(
@@ -189,6 +191,7 @@ class GameViewModel(
                 is GameMode.Daily -> {
                     val outcome = if (newStatus == GameStatus.Won) DailyOutcome.Won else DailyOutcome.Lost
                     dailyRepo.recordOutcome(outcome)
+                    if (newStatus == GameStatus.Won) streakRepo.recordWin() else streakRepo.recordLoss()
                 }
                 is GameMode.Level -> {
                     if (newStatus == GameStatus.Won) levelsRepo.markSolved(m.index)
