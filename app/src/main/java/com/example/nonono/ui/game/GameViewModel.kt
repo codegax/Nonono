@@ -63,6 +63,14 @@ class GameViewModel(
     private val _tapMode = MutableStateFlow(TapMode.Fill)
     val tapMode: StateFlow<TapMode> = _tapMode.asStateFlow()
 
+    private val _elapsedMs = MutableStateFlow(0L)
+    val elapsedMs: StateFlow<Long> = _elapsedMs.asStateFlow()
+    private var sessionStartMs: Long? = null
+
+    private val _mistakeFlash = MutableStateFlow<MistakeFlash?>(null)
+    val mistakeFlash: StateFlow<MistakeFlash?> = _mistakeFlash.asStateFlow()
+    private var mistakeCounter = 0L
+
     private val initialized = MutableStateFlow(false)
 
     val canRestart: Boolean get() = mode !is GameMode.Daily
@@ -109,6 +117,8 @@ class GameViewModel(
         if (_gameStatus.value != GameStatus.Playing) return
         if (current.get(x, y) != CellState.Empty) return
 
+        if (sessionStartMs == null) sessionStartMs = System.currentTimeMillis()
+
         val solutionState = if (solution.get(x, y) == CellState.Filled) CellState.Filled else CellState.Marked
         val stateSelected = when (_tapMode.value) {
             TapMode.Fill -> CellState.Filled
@@ -121,6 +131,8 @@ class GameViewModel(
         if (solutionState == stateSelected) {
             if (updated.matchesFills(solution)) setStatus(GameStatus.Won)
         } else {
+            mistakeCounter += 1
+            _mistakeFlash.value = MistakeFlash(x = x, y = y, id = mistakeCounter)
             val newLives = _lives.value - 1
             _lives.value = newLives
             if (newLives < 1) setStatus(GameStatus.Lost)
@@ -181,6 +193,8 @@ class GameViewModel(
         _gameStatus.value = GameStatus.Playing
         _lives.value = 3
         _tapMode.value = TapMode.Fill
+        sessionStartMs = null
+        _elapsedMs.value = 0L
     }
 
     fun nextPuzzle() {
@@ -203,6 +217,8 @@ class GameViewModel(
             _gameStatus.value = GameStatus.Playing
             _lives.value = 3
             _tapMode.value = TapMode.Fill
+            sessionStartMs = null
+            _elapsedMs.value = 0L
             initialized.value = true
         }
     }
@@ -211,6 +227,9 @@ class GameViewModel(
         if (_gameStatus.value == newStatus) return
         _gameStatus.value = newStatus
         if (newStatus != GameStatus.Won && newStatus != GameStatus.Lost) return
+
+        val start = sessionStartMs
+        _elapsedMs.value = if (start != null) System.currentTimeMillis() - start else 0L
 
         viewModelScope.launch {
             when (val m = mode) {
@@ -233,6 +252,8 @@ class GameViewModel(
         }
     }
 }
+
+data class MistakeFlash(val x: Int, val y: Int, val id: Long)
 
 private const val STAGGER_MS = 40L
 

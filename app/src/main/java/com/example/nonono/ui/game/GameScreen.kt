@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
@@ -70,6 +71,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.app.Application
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -95,6 +97,8 @@ fun GameScreen(
     val gameStatus by viewModel.gameStatus.collectAsStateWithLifecycle()
     val lives by viewModel.lives.collectAsStateWithLifecycle()
     val tapMode by viewModel.tapMode.collectAsStateWithLifecycle()
+    val elapsedMs by viewModel.elapsedMs.collectAsStateWithLifecycle()
+    val mistakeFlash by viewModel.mistakeFlash.collectAsStateWithLifecycle()
     val density = LocalDensity.current
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -111,18 +115,22 @@ fun GameScreen(
 
             AnimatedVisibility(visible = gameStatus == GameStatus.Won) {
                 val (label, action) = winAction(viewModel.mode, viewModel::nextPuzzle, onBack)
-                StatusBanner(
+                ResultPanel(
                     won = true,
                     title = if (viewModel.isDaily) "Daily complete" else "You won",
+                    timeMs = elapsedMs,
+                    livesRemaining = lives,
                     actionLabel = label,
                     onAction = action,
                 )
             }
             AnimatedVisibility(visible = gameStatus == GameStatus.Lost) {
                 val (label, action) = lossAction(viewModel.mode, viewModel::reset)
-                StatusBanner(
+                ResultPanel(
                     won = false,
                     title = if (viewModel.isDaily) "Come back tomorrow" else "Out of lives",
+                    timeMs = elapsedMs,
+                    livesRemaining = lives,
                     actionLabel = label,
                     onAction = action,
                 )
@@ -242,7 +250,14 @@ fun GameScreen(
                                     for (y in 0 until currentBoard.height) {
                                         Row {
                                             for (x in 0 until currentBoard.width) {
-                                                Cell(state = currentBoard.get(x, y), size = cell)
+                                                val flashKey = mistakeFlash
+                                                    ?.takeIf { it.x == x && it.y == y }
+                                                    ?.id
+                                                Cell(
+                                                    state = currentBoard.get(x, y),
+                                                    size = cell,
+                                                    flashKey = flashKey,
+                                                )
                                             }
                                         }
                                     }
@@ -442,9 +457,11 @@ private fun lossAction(
 }
 
 @Composable
-private fun StatusBanner(
+private fun ResultPanel(
     won: Boolean,
     title: String,
+    timeMs: Long,
+    livesRemaining: Int,
     actionLabel: String?,
     onAction: () -> Unit,
 ) {
@@ -475,6 +492,8 @@ private fun StatusBanner(
         1f
     }
 
+    val mistakes = (3 - livesRemaining).coerceAtLeast(0)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -485,26 +504,77 @@ private fun StatusBanner(
         color = container,
         contentColor = onContainer,
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = if (won) Icons.Filled.Check else Icons.Filled.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatBlock(label = "Time", value = formatElapsed(timeMs))
+                if (won) {
+                    StatBlock(label = "Mistakes", value = "$mistakes / 3")
+                }
+            }
+
             if (actionLabel != null) {
-                TextButton(onClick = onAction) {
-                    Text(text = actionLabel)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onAction) {
+                        Text(text = actionLabel)
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun StatBlock(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            letterSpacing = 1.2.sp,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+private fun formatElapsed(ms: Long): String {
+    val totalSec = (ms / 1000L).coerceAtLeast(0L)
+    val m = totalSec / 60L
+    val s = totalSec % 60L
+    return "%d:%02d".format(m, s)
+}
+
 
 @Composable
 private fun BottomBar(
@@ -707,23 +777,33 @@ private fun Confetti(
 private fun Cell(
     state: CellState,
     size: Dp,
+    flashKey: Long? = null,
 ) {
     val targetColor = if (state == CellState.Filled) {
         MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    val color by animateColorAsState(
-        targetValue = targetColor,
-        animationSpec = tween(durationMillis = 160),
-        label = "cellColor",
-    )
+    val errorColor = MaterialTheme.colorScheme.error
+
+    val color = remember { androidx.compose.animation.Animatable(targetColor) }
+
+    LaunchedEffect(targetColor) {
+        color.animateTo(targetColor, tween(durationMillis = 160))
+    }
+
+    LaunchedEffect(flashKey) {
+        if (flashKey != null) {
+            color.snapTo(errorColor)
+            color.animateTo(targetColor, tween(durationMillis = 450))
+        }
+    }
 
     Box(
         modifier = Modifier
             .size(size)
             .padding((size * 0.05f).coerceAtLeast(1.dp))
-            .background(color = color, shape = RoundedCornerShape((size * 0.12f).coerceAtLeast(2.dp))),
+            .background(color = color.value, shape = RoundedCornerShape((size * 0.12f).coerceAtLeast(2.dp))),
         contentAlignment = Alignment.Center,
     ) {
         AnimatedVisibility(visible = state == CellState.Marked) {
