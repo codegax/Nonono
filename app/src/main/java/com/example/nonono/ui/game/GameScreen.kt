@@ -57,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -151,6 +152,8 @@ fun GameScreen(
                     val rowGutter = cell * rowGutterUnits
                     val colGutter = cell * colGutterUnits
                     val cellPx = with(density) { cell.toPx() }
+                    val majorLinePx = with(density) { 2.dp.toPx() }
+                    val majorLineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         ColumnClues(puzzle = puzzle, cell = cell, rowGutter = rowGutter, colGutter = colGutter)
@@ -163,7 +166,8 @@ fun GameScreen(
                             }
 
                             Box(
-                                modifier = Modifier.pointerInput(currentBoard.width, currentBoard.height, cellPx) {
+                                modifier = Modifier
+                                    .pointerInput(currentBoard.width, currentBoard.height, cellPx) {
                                     awaitEachGesture {
                                         val down = awaitFirstDown(requireUnconsumed = false)
 
@@ -211,7 +215,28 @@ fun GameScreen(
                                             }
                                         }
                                     }
-                                },
+                                }
+                                    .drawWithContent {
+                                        drawContent()
+                                        for (i in 5 until currentBoard.width step 5) {
+                                            val x = i * cellPx
+                                            drawLine(
+                                                color = majorLineColor,
+                                                start = Offset(x, 0f),
+                                                end = Offset(x, size.height),
+                                                strokeWidth = majorLinePx,
+                                            )
+                                        }
+                                        for (i in 5 until currentBoard.height step 5) {
+                                            val y = i * cellPx
+                                            drawLine(
+                                                color = majorLineColor,
+                                                start = Offset(0f, y),
+                                                end = Offset(size.width, y),
+                                                strokeWidth = majorLinePx,
+                                            )
+                                        }
+                                    },
                             ) {
                                 Column {
                                     for (y in 0 until currentBoard.height) {
