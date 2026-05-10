@@ -7,8 +7,8 @@ fun generateLevel(
     seed: Long,
     width: Int,
     height: Int,
-    fillRate: Double = 0.55,
-    maxAttempts: Int = 200,
+    fillRate: Double = 0.50,
+    maxAttempts: Int = 500,
 ): Level? {
     val random = Random(seed)
     repeat(maxAttempts) {

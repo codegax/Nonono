@@ -8,8 +8,7 @@ import com.example.nonono.data.DailyPlayRepository
 import com.example.nonono.data.LevelsProgressRepository
 import com.example.nonono.data.StreakRepository
 import com.example.nonono.data.currentEpochDay
-import com.example.nonono.domain.Board
-import com.example.nonono.domain.generateLevel
+import com.example.nonono.domain.Difficulty
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -19,6 +18,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val dailyRepo = DailyPlayRepository(app)
     private val levelsRepo = LevelsProgressRepository(app)
     private val streakRepo = StreakRepository(app)
+
+    val dailyDifficulty: Difficulty = Difficulty.forEpochDay(currentEpochDay())
 
     val dailyOutcome: StateFlow<DailyOutcome> = dailyRepo.today.stateIn(
         scope = viewModelScope,
@@ -39,11 +40,4 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         started = SharingStarted.Eagerly,
         initialValue = 0,
     )
-
-    val dailySolution: Board? = generateLevel(
-        name = "Today",
-        seed = currentEpochDay(),
-        width = 5,
-        height = 5,
-    )?.solution
 }

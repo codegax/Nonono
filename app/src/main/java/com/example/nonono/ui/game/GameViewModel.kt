@@ -14,6 +14,7 @@ import com.example.nonono.data.UserSettingsRepository
 import com.example.nonono.data.currentEpochDay
 import com.example.nonono.domain.Board
 import com.example.nonono.domain.CellState
+import com.example.nonono.domain.Difficulty
 import com.example.nonono.domain.GameStatus
 import com.example.nonono.domain.Level
 import com.example.nonono.domain.Puzzle
@@ -47,11 +48,11 @@ class GameViewModel(
         initialValue = true,
     )
 
-    private val _level = MutableStateFlow(generateForMode(mode))
-    val level: StateFlow<Level> = _level.asStateFlow()
+    private val _level = MutableStateFlow<Level?>(null)
+    val level: StateFlow<Level?> = _level.asStateFlow()
 
-    private val _board = MutableStateFlow(emptyBoardFor(_level.value.puzzle))
-    val board: StateFlow<Board> = _board.asStateFlow()
+    private val _board = MutableStateFlow<Board?>(null)
+    val board: StateFlow<Board?> = _board.asStateFlow()
 
     private val _gameStatus = MutableStateFlow(GameStatus.Playing)
     val gameStatus: StateFlow<GameStatus> = _gameStatus.asStateFlow()
@@ -62,38 +63,49 @@ class GameViewModel(
     private val _tapMode = MutableStateFlow(TapMode.Fill)
     val tapMode: StateFlow<TapMode> = _tapMode.asStateFlow()
 
-    private val initialized = MutableStateFlow(mode !is GameMode.Daily)
+    private val initialized = MutableStateFlow(false)
 
     val canRestart: Boolean get() = mode !is GameMode.Daily
     val canNextPuzzle: Boolean get() = mode is GameMode.Endless
     val isDaily: Boolean get() = mode is GameMode.Daily
 
     init {
-        if (mode is GameMode.Daily) {
-            viewModelScope.launch {
-                inProgressRepo.load()?.let { saved ->
+        viewModelScope.launch {
+            val generated = generateForMode(mode)
+            _level.value = generated
+
+            if (mode is GameMode.Daily) {
+                val saved = inProgressRepo.load()
+                if (saved != null) {
                     _board.value = saved.board
                     _lives.value = saved.lives
                     _gameStatus.value = saved.status
+                } else {
+                    _board.value = emptyBoardFor(generated.puzzle)
                 }
                 initialized.value = true
                 combine(_board, _lives, _gameStatus) { b, l, s -> Triple(b, l, s) }
                     .drop(1)
                     .collect { (board, lives, status) ->
+                        if (board == null) return@collect
                         if (status == GameStatus.Playing) {
                             inProgressRepo.save(board, lives, status)
                         } else {
                             inProgressRepo.clear()
                         }
                     }
+            } else {
+                _board.value = emptyBoardFor(generated.puzzle)
+                initialized.value = true
             }
         }
     }
 
     fun onCellTap(x: Int, y: Int) {
         if (!initialized.value) return
-        val solution = _level.value.solution
-        val current = _board.value
+        val level = _level.value ?: return
+        val current = _board.value ?: return
+        val solution = level.solution
         if (_gameStatus.value != GameStatus.Playing) return
         if (current.get(x, y) != CellState.Empty) return
 
@@ -123,8 +135,8 @@ class GameViewModel(
     }
 
     private suspend fun staggerFillRowIfSatisfied(y: Int) {
-        val solution = _level.value.solution
-        val board = _board.value
+        val solution = _level.value?.solution ?: return
+        val board = _board.value ?: return
         val solutionFilled = solution.row(y).count { it == CellState.Filled }
         val boardFilled = board.row(y).count { it == CellState.Filled }
         if (solutionFilled != boardFilled) return
@@ -141,8 +153,8 @@ class GameViewModel(
     }
 
     private suspend fun staggerFillColumnIfSatisfied(x: Int) {
-        val solution = _level.value.solution
-        val board = _board.value
+        val solution = _level.value?.solution ?: return
+        val board = _board.value ?: return
         val solutionFilled = solution.column(x).count { it == CellState.Filled }
         val boardFilled = board.column(x).count { it == CellState.Filled }
         if (solutionFilled != boardFilled) return
@@ -164,7 +176,8 @@ class GameViewModel(
 
     fun reset() {
         if (!canRestart) return
-        _board.value = emptyBoardFor(_level.value.puzzle)
+        val level = _level.value ?: return
+        _board.value = emptyBoardFor(level.puzzle)
         _gameStatus.value = GameStatus.Playing
         _lives.value = 3
         _tapMode.value = TapMode.Fill
@@ -172,13 +185,26 @@ class GameViewModel(
 
     fun nextPuzzle() {
         if (!canNextPuzzle) return
-        val nextLevel = generateLevel(name = "Endless", seed = Random.nextLong(), width = GRID_SIZE, height = GRID_SIZE)
-            ?: samplePuzzles.first()
-        _level.value = nextLevel
-        _board.value = emptyBoardFor(nextLevel.puzzle)
-        _gameStatus.value = GameStatus.Playing
-        _lives.value = 3
-        _tapMode.value = TapMode.Fill
+        viewModelScope.launch {
+            initialized.value = false
+            _level.value = null
+            _board.value = null
+            val seed = Random.nextLong()
+            val difficulty = Difficulty.forSeed(seed)
+            val nextLevel = generateLevel(
+                name = "Endless · ${difficulty.displayName}",
+                seed = seed,
+                width = difficulty.size,
+                height = difficulty.size,
+                fillRate = difficulty.fillRate,
+            ) ?: samplePuzzles.first()
+            _level.value = nextLevel
+            _board.value = emptyBoardFor(nextLevel.puzzle)
+            _gameStatus.value = GameStatus.Playing
+            _lives.value = 3
+            _tapMode.value = TapMode.Fill
+            initialized.value = true
+        }
     }
 
     private fun setStatus(newStatus: GameStatus) {
@@ -209,21 +235,32 @@ class GameViewModel(
 }
 
 private const val STAGGER_MS = 40L
-private const val GRID_SIZE = 5
 
 private fun generateForMode(mode: GameMode): Level {
-    val seed = when (mode) {
-        is GameMode.Daily -> currentEpochDay()
-        is GameMode.Level -> currentEpochDay() * 10L + mode.index
-        is GameMode.Endless -> mode.seed
+    val (difficulty, seed, name) = when (mode) {
+        is GameMode.Daily -> Triple(
+            Difficulty.forEpochDay(currentEpochDay()),
+            currentEpochDay(),
+            "Today",
+        )
+        is GameMode.Level -> Triple(
+            Difficulty.forLevelIndex(mode.index),
+            currentEpochDay() * 10L + mode.index,
+            "Level ${mode.index + 1}",
+        )
+        is GameMode.Endless -> Triple(
+            Difficulty.forSeed(mode.seed),
+            mode.seed,
+            "Endless",
+        )
     }
-    val name = when (mode) {
-        is GameMode.Daily -> "Today"
-        is GameMode.Level -> "Level ${mode.index + 1}"
-        is GameMode.Endless -> "Endless"
-    }
-    return generateLevel(name = name, seed = seed, width = GRID_SIZE, height = GRID_SIZE)
-        ?: samplePuzzles.first()
+    return generateLevel(
+        name = "$name · ${difficulty.displayName}",
+        seed = seed,
+        width = difficulty.size,
+        height = difficulty.size,
+        fillRate = difficulty.fillRate,
+    ) ?: samplePuzzles.first()
 }
 
 private fun emptyBoardFor(puzzle: Puzzle): Board {

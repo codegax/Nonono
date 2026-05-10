@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -77,9 +79,6 @@ import com.example.nonono.domain.Puzzle
 import com.example.nonono.domain.TapMode
 import kotlin.math.abs
 
-private val CELL = 48.dp
-private val GUTTER = 56.dp
-
 @Composable
 fun GameScreen(
     mode: GameMode,
@@ -91,7 +90,6 @@ fun GameScreen(
     ),
 ) {
     val level by viewModel.level.collectAsStateWithLifecycle()
-    val puzzle = level.puzzle
     val board by viewModel.board.collectAsStateWithLifecycle()
     val gameStatus by viewModel.gameStatus.collectAsStateWithLifecycle()
     val lives by viewModel.lives.collectAsStateWithLifecycle()
@@ -129,93 +127,112 @@ fun GameScreen(
                 )
             }
 
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    ColumnClues(puzzle)
+                val currentLevel = level
+                val currentBoard = board
+                if (currentLevel == null || currentBoard == null) {
+                    CircularProgressIndicator()
+                } else {
+                    val puzzle = currentLevel.puzzle
+                    val maxRowClues = puzzle.rows.maxOfOrNull { it.size } ?: 1
+                    val maxColClues = puzzle.cols.maxOfOrNull { it.size } ?: 1
+                    val rowGutterUnits = (maxRowClues * 0.6f).coerceAtLeast(1.2f)
+                    val colGutterUnits = (maxColClues * 0.6f).coerceAtLeast(1.2f)
+                    val widthUnits = currentBoard.width + rowGutterUnits + rowGutterUnits
+                    val heightUnits = currentBoard.height + colGutterUnits
+                    val cellByWidth = maxWidth / widthUnits
+                    val cellByHeight = maxHeight / heightUnits
+                    val cell = minOf(cellByWidth, cellByHeight).coerceIn(12.dp, 48.dp)
+                    val rowGutter = cell * rowGutterUnits
+                    val colGutter = cell * colGutterUnits
+                    val cellPx = with(density) { cell.toPx() }
 
-                    Row(verticalAlignment = Alignment.Top) {
-                        Column {
-                            for (y in 0 until board.height) {
-                                RowClue(puzzle.rows[y])
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        ColumnClues(puzzle = puzzle, cell = cell, rowGutter = rowGutter, colGutter = colGutter)
+
+                        Row(verticalAlignment = Alignment.Top) {
+                            Column {
+                                for (y in 0 until currentBoard.height) {
+                                    RowClue(clue = puzzle.rows[y], cell = cell, gutter = rowGutter)
+                                }
                             }
-                        }
 
-                        Box(
-                            modifier = Modifier.pointerInput(board.width, board.height) {
-                                val cellPx = with(density) { CELL.toPx() }
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
+                            Box(
+                                modifier = Modifier.pointerInput(currentBoard.width, currentBoard.height, cellPx) {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
 
-                                    fun cellAt(offset: Offset): Pair<Int, Int>? {
-                                        val cx = (offset.x / cellPx).toInt()
-                                        val cy = (offset.y / cellPx).toInt()
-                                        return if (cx in 0 until board.width && cy in 0 until board.height) {
-                                            cx to cy
-                                        } else {
-                                            null
-                                        }
-                                    }
-
-                                    val downCell = cellAt(down.position)
-                                    if (downCell != null) {
-                                        viewModel.onCellTap(downCell.first, downCell.second)
-                                    }
-
-                                    var lastCell = downCell
-                                    var lockedAxis: Char? = null
-
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        val change = event.changes.firstOrNull() ?: break
-                                        if (!change.pressed) break
-
-                                        val cell = cellAt(change.position) ?: continue
-                                        val (cx, cy) = cell
-
-                                        if (lockedAxis == null && downCell != null) {
-                                            val dx = abs(cx - downCell.first)
-                                            val dy = abs(cy - downCell.second)
-                                            if (dx + dy > 0) {
-                                                lockedAxis = if (dx >= dy) 'h' else 'v'
+                                        fun cellAt(offset: Offset): Pair<Int, Int>? {
+                                            val cx = (offset.x / cellPx).toInt()
+                                            val cy = (offset.y / cellPx).toInt()
+                                            return if (cx in 0 until currentBoard.width && cy in 0 until currentBoard.height) {
+                                                cx to cy
+                                            } else {
+                                                null
                                             }
                                         }
 
-                                        val targetX = if (lockedAxis == 'h') cx else (downCell?.first ?: cx)
-                                        val targetY = if (lockedAxis == 'v') cy else (downCell?.second ?: cy)
-                                        val target = targetX to targetY
+                                        val downCell = cellAt(down.position)
+                                        if (downCell != null) {
+                                            viewModel.onCellTap(downCell.first, downCell.second)
+                                        }
 
-                                        if (target != lastCell) {
-                                            viewModel.onCellTap(targetX, targetY)
-                                            lastCell = target
+                                        var lastCell = downCell
+                                        var lockedAxis: Char? = null
+
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull() ?: break
+                                            if (!change.pressed) break
+
+                                            val cellHit = cellAt(change.position) ?: continue
+                                            val (cx, cy) = cellHit
+
+                                            if (lockedAxis == null && downCell != null) {
+                                                val dx = abs(cx - downCell.first)
+                                                val dy = abs(cy - downCell.second)
+                                                if (dx + dy > 0) {
+                                                    lockedAxis = if (dx >= dy) 'h' else 'v'
+                                                }
+                                            }
+
+                                            val targetX = if (lockedAxis == 'h') cx else (downCell?.first ?: cx)
+                                            val targetY = if (lockedAxis == 'v') cy else (downCell?.second ?: cy)
+                                            val target = targetX to targetY
+
+                                            if (target != lastCell) {
+                                                viewModel.onCellTap(targetX, targetY)
+                                                lastCell = target
+                                            }
                                         }
                                     }
-                                }
-                            },
-                        ) {
-                            Column {
-                                for (y in 0 until board.height) {
-                                    Row {
-                                        for (x in 0 until board.width) {
-                                            Cell(state = board.get(x, y), size = CELL)
+                                },
+                            ) {
+                                Column {
+                                    for (y in 0 until currentBoard.height) {
+                                        Row {
+                                            for (x in 0 until currentBoard.width) {
+                                                Cell(state = currentBoard.get(x, y), size = cell)
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        Spacer(Modifier.width(GUTTER))
+                            Spacer(Modifier.width(rowGutter))
+                        }
                     }
                 }
             }
 
             BottomBar(
                 tapMode = tapMode,
-                enabled = gameStatus == GameStatus.Playing,
+                enabled = gameStatus == GameStatus.Playing && level != null,
                 onToggle = viewModel::toggleTapMode,
             )
         }
@@ -229,7 +246,7 @@ fun GameScreen(
 
 @Composable
 private fun TopBar(
-    level: Level,
+    level: Level?,
     lives: Int,
     canRestart: Boolean,
     canNextPuzzle: Boolean,
@@ -259,15 +276,17 @@ private fun TopBar(
                 .padding(start = 4.dp),
         ) {
             Text(
-                text = level.name,
+                text = level?.name ?: "Loading…",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                text = "${level.solution.width} × ${level.solution.height}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (level != null) {
+                Text(
+                    text = "${level.solution.width} × ${level.solution.height}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         LivesIndicator(lives = lives, max = 3)
@@ -534,44 +553,53 @@ private fun TapModeToggle(
 }
 
 @Composable
-private fun ColumnClues(puzzle: Puzzle) {
-    Row {
-        Spacer(Modifier.width(GUTTER))
+private fun ColumnClues(puzzle: Puzzle, cell: Dp, rowGutter: Dp, colGutter: Dp) {
+    val style = clueTextStyle(cell)
+    Row(verticalAlignment = Alignment.Bottom) {
+        Spacer(Modifier.width(rowGutter))
         for (clue in puzzle.cols) {
             Column(
-                modifier = Modifier.size(width = CELL, height = GUTTER),
+                modifier = Modifier.size(width = cell, height = colGutter),
                 verticalArrangement = Arrangement.Bottom,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 for (n in clue) {
                     Text(
                         text = n.toString(),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = style,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
         }
-        Spacer(Modifier.width(GUTTER))
+        Spacer(Modifier.width(rowGutter))
     }
 }
 
 @Composable
-private fun RowClue(clue: List<Int>) {
+private fun RowClue(clue: List<Int>, cell: Dp, gutter: Dp) {
+    val style = clueTextStyle(cell)
     Row(
-        modifier = Modifier.size(width = GUTTER, height = CELL),
+        modifier = Modifier.size(width = gutter, height = cell),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         for (n in clue) {
             Text(
                 text = n.toString(),
-                style = MaterialTheme.typography.bodyMedium,
+                style = style,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                modifier = Modifier.padding(horizontal = 2.dp),
             )
         }
     }
+}
+
+@Composable
+private fun clueTextStyle(cell: Dp) = when {
+    cell >= 36.dp -> MaterialTheme.typography.bodyMedium
+    cell >= 26.dp -> MaterialTheme.typography.bodySmall
+    else -> MaterialTheme.typography.labelSmall
 }
 
 private data class Confetto(
@@ -669,8 +697,8 @@ private fun Cell(
     Box(
         modifier = Modifier
             .size(size)
-            .padding(2.dp)
-            .background(color = color, shape = RoundedCornerShape(6.dp)),
+            .padding((size * 0.05f).coerceAtLeast(1.dp))
+            .background(color = color, shape = RoundedCornerShape((size * 0.12f).coerceAtLeast(2.dp))),
         contentAlignment = Alignment.Center,
     ) {
         AnimatedVisibility(visible = state == CellState.Marked) {
@@ -678,7 +706,7 @@ private fun Cell(
                 imageVector = Icons.Filled.Close,
                 contentDescription = "Marked",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(size).padding(10.dp),
+                modifier = Modifier.size(size).padding((size * 0.2f).coerceAtLeast(2.dp)),
             )
         }
     }

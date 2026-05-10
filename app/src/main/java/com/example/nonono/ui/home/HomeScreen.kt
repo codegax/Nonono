@@ -1,9 +1,7 @@
 package com.example.nonono.ui.home
 
 import android.app.Application
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,8 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,7 +41,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.nonono.data.DailyOutcome
 import com.example.nonono.data.currentEpochDay
-import com.example.nonono.domain.CellState
 
 private const val LEVEL_COUNT = 10
 
@@ -64,7 +59,7 @@ fun HomeScreen(
     val dailyOutcome by viewModel.dailyOutcome.collectAsStateWithLifecycle()
     val levelsSolved by viewModel.levelsSolvedCount.collectAsStateWithLifecycle()
     val streak by viewModel.streak.collectAsStateWithLifecycle()
-    val dailySolution = viewModel.dailySolution
+    val dailyDifficulty = viewModel.dailyDifficulty
 
     Column(
         modifier = modifier
@@ -77,7 +72,7 @@ fun HomeScreen(
 
         DailyCard(
             outcome = dailyOutcome,
-            solution = dailySolution,
+            difficulty = dailyDifficulty,
             onPlay = onPlayDaily,
         )
 
@@ -118,11 +113,10 @@ private fun TopBar(onSettings: () -> Unit) {
 @Composable
 private fun DailyCard(
     outcome: DailyOutcome,
-    solution: com.example.nonono.domain.Board?,
+    difficulty: com.example.nonono.domain.Difficulty,
     onPlay: () -> Unit,
 ) {
     val locked = outcome != DailyOutcome.Pending
-    val revealed = outcome != DailyOutcome.Pending
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -152,13 +146,11 @@ private fun DailyCard(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "5 × 5 · 3 lives · one attempt",
+                    text = "${difficulty.size} × ${difficulty.size} · ${difficulty.displayName} · one attempt",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            DailyPreview(solution = solution, revealed = revealed)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -198,68 +190,6 @@ private fun resetCountdown(): String {
     val hours = remainingMs / (60L * 60L * 1000L)
     val minutes = (remainingMs / (60L * 1000L)) % 60L
     return "${hours}h ${minutes}m"
-}
-
-@Composable
-private fun DailyPreview(
-    solution: com.example.nonono.domain.Board?,
-    revealed: Boolean,
-) {
-    val cell = 18.dp
-    val gap = 2.dp
-    val width = solution?.width ?: 5
-    val height = solution?.height ?: 5
-    val totalWidth = cell * width + gap * (width - 1)
-    val totalHeight = cell * height + gap * (height - 1)
-
-    Box(
-        modifier = Modifier.size(width = totalWidth, height = totalHeight),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (revealed && solution != null) {
-            PuzzlePreview(cells = solution.cells, width = width, height = height)
-        } else {
-            Text(
-                text = "?",
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PuzzlePreview(
-    cells: List<CellState>,
-    width: Int,
-    height: Int,
-) {
-    val filled = MaterialTheme.colorScheme.onSurface
-    val empty = MaterialTheme.colorScheme.surfaceContainerHighest
-    val cell = 18.dp
-    val gap = 2.dp
-
-    Canvas(
-        modifier = Modifier.size(
-            width = cell * width + gap * (width - 1),
-            height = cell * height + gap * (height - 1),
-        ),
-    ) {
-        val cellPx = cell.toPx()
-        val gapPx = gap.toPx()
-        for (i in cells.indices) {
-            val cx = i % width
-            val cy = i / width
-            val x = cx * (cellPx + gapPx)
-            val y = cy * (cellPx + gapPx)
-            drawRect(
-                color = if (cells[i] == CellState.Filled) filled else empty,
-                topLeft = Offset(x, y),
-                size = Size(cellPx, cellPx),
-            )
-        }
-    }
 }
 
 @Composable

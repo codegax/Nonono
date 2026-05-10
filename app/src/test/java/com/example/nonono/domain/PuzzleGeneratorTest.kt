@@ -45,4 +45,22 @@ class PuzzleGeneratorTest {
             assertNotNull("seed $seed should generate within attempts", level)
         }
     }
+
+    @Test
+    fun generatesEveryTierUniquely() {
+        for (tier in Difficulty.entries) {
+            val level = generateLevel(
+                name = tier.displayName,
+                seed = 17L + tier.ordinal,
+                width = tier.size,
+                height = tier.size,
+                fillRate = tier.fillRate,
+            )
+            assertNotNull("${tier.displayName} should generate", level)
+            assertTrue(
+                "${tier.displayName} should be uniquely solvable",
+                solve(level!!.puzzle) is SolveResult.Unique,
+            )
+        }
+    }
 }

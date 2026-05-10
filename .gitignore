@@ -16,3 +16,7 @@ build/
 .agents/
 .codex/
 kls_database.db
+
+# Personal notes (kept locally, not part of the repo)
+/ISSUES.md
+/docs/
