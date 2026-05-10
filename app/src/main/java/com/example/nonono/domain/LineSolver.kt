@@ -12,7 +12,7 @@ fun cluesOf(line: List<CellState>): List<Int> {
         }
     }
     if (n > 0) runs.add(n)
-    return runs.ifEmpty { listOf(0) }
+    return runs
 }
 
 /**

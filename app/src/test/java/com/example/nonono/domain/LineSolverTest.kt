@@ -20,8 +20,8 @@ class LineSolverTest {
     }
 
     @Test
-    fun cluesOfEmptyLineReturnsZero() {
-        assertEquals(listOf(0), cluesOf(listOf(E, E, E, E, E)))
+    fun cluesOfEmptyLineReturnsEmptyList() {
+        assertEquals(emptyList<Int>(), cluesOf(listOf(E, E, E, E, E)))
     }
 
     @Test
