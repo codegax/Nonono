@@ -141,8 +141,8 @@ fun GameScreen(
                     val puzzle = currentLevel.puzzle
                     val maxRowClues = puzzle.rows.maxOfOrNull { it.size } ?: 1
                     val maxColClues = puzzle.cols.maxOfOrNull { it.size } ?: 1
-                    val rowGutterUnits = (maxRowClues * 0.6f).coerceAtLeast(1.2f)
-                    val colGutterUnits = (maxColClues * 0.6f).coerceAtLeast(1.2f)
+                    val rowGutterUnits = (maxRowClues * 0.7f).coerceAtLeast(1.2f)
+                    val colGutterUnits = (maxColClues * 1.0f).coerceAtLeast(1.2f)
                     val widthUnits = currentBoard.width + rowGutterUnits + rowGutterUnits
                     val heightUnits = currentBoard.height + colGutterUnits
                     val cellByWidth = maxWidth / widthUnits
